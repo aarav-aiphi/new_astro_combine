@@ -1,0 +1,64 @@
+textScript.py
+venv
+.pytes
+
+# Dependencies
+node_modules/
+*/node_modules/
+**/node_modules/
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# Build outputs
+/.next/
+*/.next/
+/out/
+*/out/
+/build
+*/build
+.swc/
+*/.swc/
+
+# Testing
+/coverage
+*/coverage
+
+# Misc
+.DS_Store
+*.pem
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Environment files (can opt-in for committing if needed)
+.env*
+*/.env*
+
+# Vercel
+.vercel
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+
+# Git directories in subdirectories
+*/.git/
+
+# Package lock files (optional - you can uncomment if you don't want to track them)
+# package-lock.json
+# */package-lock.json
