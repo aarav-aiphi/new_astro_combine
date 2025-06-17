@@ -4,6 +4,7 @@ import axios from 'axios';
 // Types
 interface BillingSession {
   sessionId: string;
+  userId?: string;
   astrologerId: string;
   astrologerName?: string;
   sessionType: 'chat' | 'call';
@@ -49,6 +50,9 @@ interface BillingState {
   // Real-time display
   timeElapsed: string;
   amountSpent: string;
+  // UI state
+  isJoiningSession: boolean;
+  isEndingSession: boolean;
 }
 
 // Initial state
@@ -60,6 +64,8 @@ const initialState: BillingState = {
   error: null,
   timeElapsed: '00:00',
   amountSpent: '₹0.00',
+  isJoiningSession: false,
+  isEndingSession: false,
 };
 
 // Helper function to format time
@@ -135,6 +141,7 @@ const billingSlice = createSlice({
       state.activeSession = action.payload;
       state.timeElapsed = formatTime(action.payload.secondsElapsed);
       state.amountSpent = formatAmount(action.payload.currentCostPaise);
+      state.isJoiningSession = false;
     },
     
     clearActiveSession: (state) => {
@@ -142,6 +149,8 @@ const billingSlice = createSlice({
       state.lastTick = null;
       state.timeElapsed = '00:00';
       state.amountSpent = '₹0.00';
+      state.isJoiningSession = false;
+      state.isEndingSession = false;
     },
     
     processBillingTick: (state, action: PayloadAction<BillingTick>) => {
@@ -149,12 +158,17 @@ const billingSlice = createSlice({
       state.lastTick = tick;
       
       if (state.activeSession && state.activeSession.sessionId === tick.sessionId) {
+        // Update elapsed time
         state.activeSession.secondsElapsed = tick.secondsElapsed;
-        state.activeSession.currentCostPaise += tick.deductedPaise;
+        
+        // Calculate total cost based on elapsed time and rate (like server does)
+        const minutesElapsed = tick.secondsElapsed / 60;
+        const totalCostPaise = Math.ceil(minutesElapsed * state.activeSession.ratePaisePerMin);
+        state.activeSession.currentCostPaise = totalCostPaise;
         
         // Update display strings
         state.timeElapsed = formatTime(tick.secondsElapsed);
-        state.amountSpent = formatAmount(state.activeSession.currentCostPaise);
+        state.amountSpent = formatAmount(totalCostPaise);
       }
     },
     
@@ -164,6 +178,107 @@ const billingSlice = createSlice({
         state.activeSession.currentCostPaise = action.payload.totalCostPaise;
         state.amountSpent = formatAmount(action.payload.totalCostPaise);
       }
+      state.isEndingSession = false;
+    },
+    
+    // New actions for Phase 2
+    consultStarted: (state, action: PayloadAction<{
+      sessionId: string;
+      userId: string;
+      astrologerId: string;
+      sessionType: 'chat' | 'call';
+      ratePaisePerMin: number;
+      astrologerName?: string;
+    }>) => {
+      const payload = action.payload;
+      state.activeSession = {
+        sessionId: payload.sessionId,
+        userId: payload.userId,
+        astrologerId: payload.astrologerId,
+        astrologerName: payload.astrologerName,
+        sessionType: payload.sessionType,
+        ratePaisePerMin: payload.ratePaisePerMin,
+        secondsElapsed: 0,
+        currentCostPaise: 0,
+        isLive: true,
+        startedAt: new Date().toISOString(),
+      };
+      state.timeElapsed = '00:00';
+      state.amountSpent = '₹0.00';
+      state.isJoiningSession = false;
+    },
+    
+    sessionAlreadyActive: (state, action: PayloadAction<{
+      sessionId: string;
+      userId: string;
+      astrologerId: string;
+      sessionType: 'chat' | 'call';
+      ratePaisePerMin: number;
+      astrologerName?: string;
+    }>) => {
+      const payload = action.payload;
+      // If we don't have an active session in Redux, create one
+      if (!state.activeSession) {
+        state.activeSession = {
+          sessionId: payload.sessionId,
+          userId: payload.userId,
+          astrologerId: payload.astrologerId,
+          astrologerName: payload.astrologerName,
+          sessionType: payload.sessionType,
+          ratePaisePerMin: payload.ratePaisePerMin,
+          secondsElapsed: 0,
+          currentCostPaise: 0,
+          isLive: true,
+          startedAt: new Date().toISOString(),
+        };
+        state.timeElapsed = '00:00';
+        state.amountSpent = '₹0.00';
+      }
+      state.isJoiningSession = false;
+    },
+    
+    consultEnded: (state, action: PayloadAction<{
+      sessionId: string;
+      reason: string;
+      timestamp: string;
+      totalCostPaise?: number;
+      finalSettlementPaise?: number;
+      unbilledSeconds?: number;
+      actualSecondsElapsed?: number;
+    }>) => {
+      if (state.activeSession && state.activeSession.sessionId === action.payload.sessionId) {
+        state.activeSession.isLive = false;
+        state.activeSession.endedAt = action.payload.timestamp;
+        
+        // Update with final settlement data
+        if (action.payload.totalCostPaise !== undefined) {
+          state.activeSession.currentCostPaise = action.payload.totalCostPaise;
+          state.amountSpent = formatAmount(action.payload.totalCostPaise);
+        }
+        
+        // Update with actual elapsed time if provided
+        if (action.payload.actualSecondsElapsed !== undefined) {
+          state.activeSession.secondsElapsed = action.payload.actualSecondsElapsed;
+          state.timeElapsed = formatTime(action.payload.actualSecondsElapsed);
+        }
+        
+        console.log('💰 Session ended with final settlement:', {
+          sessionId: action.payload.sessionId,
+          totalCostPaise: action.payload.totalCostPaise,
+          finalSettlementPaise: action.payload.finalSettlementPaise,
+          unbilledSeconds: action.payload.unbilledSeconds,
+          actualSecondsElapsed: action.payload.actualSecondsElapsed
+        });
+      }
+      state.isEndingSession = false;
+    },
+    
+    setJoiningSession: (state, action: PayloadAction<boolean>) => {
+      state.isJoiningSession = action.payload;
+    },
+    
+    setEndingSession: (state, action: PayloadAction<boolean>) => {
+      state.isEndingSession = action.payload;
     },
     
     clearBillingError: (state) => {
@@ -186,7 +301,7 @@ const billingSlice = createSlice({
         if (action.payload) {
           state.activeSession = {
             sessionId: action.payload.sessionId,
-            astrologerId: action.payload.astrologerId,
+            astrologerId: action.payload.astrologer,
             sessionType: action.payload.sessionType,
             ratePaisePerMin: action.payload.ratePaisePerMin,
             secondsElapsed: action.payload.durationSeconds,
@@ -198,13 +313,15 @@ const billingSlice = createSlice({
           state.amountSpent = formatAmount(action.payload.currentCostPaise);
         } else {
           state.activeSession = null;
+          state.timeElapsed = '00:00';
+          state.amountSpent = '₹0.00';
         }
       })
       .addCase(fetchActiveSession.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
+        state.activeSession = null;
       })
-      
       // Fetch session receipt
       .addCase(fetchSessionReceipt.pending, (state) => {
         state.loading = true;
@@ -226,26 +343,44 @@ export const {
   clearActiveSession,
   processBillingTick,
   sessionEnded,
+  consultStarted,
+  sessionAlreadyActive,
+  consultEnded,
+  setJoiningSession,
+  setEndingSession,
   clearBillingError,
   clearReceipt,
 } = billingSlice.actions;
 
+export default billingSlice.reducer;
+
 // Selectors
-export const selectActiveSession = (s: { billing?: BillingState }) =>
-  s.billing?.activeSession ?? null;
-export const selectLastTick = (s: { billing?: BillingState }) =>
-  s.billing?.lastTick ?? null;
-export const selectReceipt = (s: { billing?: BillingState }) =>
-  s.billing?.receipt ?? null;
-export const selectBillingLoading = (s: { billing?: BillingState }) =>
-  s.billing?.loading ?? false;
-export const selectBillingError = (s: { billing?: BillingState }) =>
-  s.billing?.error ?? null;
-export const selectTimeElapsed = (s: { billing?: BillingState }) =>
-  s.billing?.timeElapsed ?? '00:00';
-export const selectAmountSpent = (s: { billing?: BillingState }) =>
-  s.billing?.amountSpent ?? '₹0.00';
+export const selectActiveSession = (state: { billing: BillingState }) =>
+  state.billing.activeSession;
+
+export const selectLastTick = (state: { billing: BillingState }) =>
+  state.billing.lastTick;
+
+export const selectReceipt = (state: { billing: BillingState }) =>
+  state.billing.receipt;
+
+export const selectBillingLoading = (state: { billing: BillingState }) =>
+  state.billing.loading;
+
+export const selectBillingError = (state: { billing: BillingState }) =>
+  state.billing.error;
+
+export const selectTimeElapsed = (state: { billing: BillingState }) =>
+  state.billing.timeElapsed;
+
+export const selectAmountSpent = (state: { billing: BillingState }) =>
+  state.billing.amountSpent;
+
+export const selectIsJoiningSession = (state: { billing: BillingState }) =>
+  state.billing.isJoiningSession;
+
+export const selectIsEndingSession = (state: { billing: BillingState }) =>
+  state.billing.isEndingSession;
 
 export type { BillingState, BillingSession, BillingTick, Receipt };
 export { initialState };
-export default billingSlice.reducer; 

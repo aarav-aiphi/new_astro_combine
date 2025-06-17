@@ -12,6 +12,7 @@ import {
 import ReviewCard from "@/components/ReviewComponent/ReviewCard";
 import axios from "axios";
 import { Review } from "@/lib/reviewService";
+import { getApiBaseUrl } from "@/lib/utils";
 
 interface ReviewsResponse {
   reviews: Review[];
@@ -45,7 +46,7 @@ const ReviewsContent = ({ astrologerId }: ReviewsContentProps) => {
     try {
       setLoading(true);
       const res = await axios.get(
-        `http://localhost:7000/api/v1/reviews/astrologer/${astrologerId}`,
+        `${getApiBaseUrl()}/reviews/astrologer/${astrologerId}`,
         { withCredentials: true }
       );
       console.log("Reviews data:", res.data);
@@ -82,7 +83,7 @@ const ReviewsContent = ({ astrologerId }: ReviewsContentProps) => {
     e.preventDefault();
     setSubmittingReview(true);
     try {
-      const response = await axios.post("http://localhost:7000/api/v1/reviews/create", {
+      const response = await axios.post(`${getApiBaseUrl()}/reviews/create`, {
         astrologerId,
         rating: newReviewRating,
         comment: newReviewComment,

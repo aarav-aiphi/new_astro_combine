@@ -19,9 +19,9 @@ export default function Home() {
         <CustomerReviews />
         <ServicesSection />
         <TestimonialsSection />
-        <AstrologersSection />
-        <BlogSection />
-        <CTASection />
+        {/* <AstrologersSection />
+        <BlogSection /> */}
+        {/* <CTASection /> */}
       </main>
       <Footer />
     </div>

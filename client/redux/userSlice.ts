@@ -45,6 +45,39 @@ const initialState: UserState = {
   error: null,
 };
 
+// Async thunk for logging in
+export const loginUser = createAsyncThunk(
+  'user/login',
+  async ({ email, password }: { email: string; password: string }, { rejectWithValue }) => {
+    try {
+      const response = await fetch('/api/v1/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        return rejectWithValue(error.message);
+      }
+
+      const data: LoginResponse = await response.json();
+      
+      // Store token in localStorage
+      if (data.token) {
+        localStorage.setItem('token', data.token);
+      }
+
+      return data;
+    } catch (error: any) {
+      return rejectWithValue(error?.message || 'Something went wrong');
+    }
+  }
+);
+
 // 3) Async thunk for signing out
 export const signoutUser = createAsyncThunk(
   'user/signout',
@@ -82,39 +115,62 @@ export const fetchCurrentUser = createAsyncThunk(
   async (_, { rejectWithValue }) => {
     try {
       const token = localStorage.getItem('token');
-      console.log("🔍 fetchCurrentUser - token from localStorage:", token);
       
       if (!token) {
-        console.log("🔍 fetchCurrentUser - no token found");
         return rejectWithValue("No token found");
       }
 
       const isValid = isAuthenticated();
-      console.log("🔍 fetchCurrentUser - token valid:", isValid);
       
       if (!isValid) {
-        console.log("🔍 fetchCurrentUser - token expired or invalid");
         localStorage.removeItem('token'); // Clean up invalid token
         return rejectWithValue("Token expired or invalid");
       }
 
-      console.log("🔍 fetchCurrentUser - making API call to /api/v1/users/profile");
-      const response = await fetch('/api/v1/users/profile', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include',
-      });
+      // Add retry logic for network issues
+      let response;
+      let lastError;
+      
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          response = await fetch('/api/v1/users/profile', {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            credentials: 'include',
+            cache: 'no-cache'
+          });
+          
+          break; // Success, exit retry loop
+          
+        } catch (fetchError: any) {
+          lastError = fetchError;
+          
+          // If it's a Chrome extension interference, try alternative approach
+          if (fetchError.message?.includes('Failed to fetch') && attempt < 3) {
+            await new Promise(resolve => setTimeout(resolve, attempt * 500));
+            continue;
+          }
+          
+          // If all attempts failed
+          if (attempt === 3) {
+            throw lastError;
+          }
+        }
+      }
+
+      if (!response) {
+        throw new Error('All fetch attempts failed');
+      }
 
       if (!response.ok) {
         const error = await response.json();
-        console.error("🔍 fetchCurrentUser - API error:", error);
         throw new Error(error.message || "Failed to fetch profile");
       }
 
       const userData = await response.json();
-      console.log("🔍 fetchCurrentUser - API success:", userData);
       
       // Return both user data and token for Redux state restoration
       return {
@@ -122,8 +178,13 @@ export const fetchCurrentUser = createAsyncThunk(
         token: token
       };
     } catch (err: any) {
-      console.error("🔍 fetchCurrentUser - error:", err);
-      return rejectWithValue(err.message);
+      // Provide more helpful error messages
+      let errorMessage = err.message;
+      if (err.message?.includes('Failed to fetch')) {
+        errorMessage = 'Network connection failed. Please check your internet connection and try refreshing the page.';
+      }
+      
+      return rejectWithValue(errorMessage);
     }
   }
 );
@@ -146,6 +207,22 @@ export const userSlice = createSlice({
     },
   },
   extraReducers: (builder) => {
+    // ============== LOGIN THUNKS ==============
+    builder.addCase(loginUser.pending, (state) => {
+      state.loading = true;
+      state.error = null;
+    });
+    builder.addCase(loginUser.fulfilled, (state, action) => {
+      state.loading = false;
+      state.user = action.payload.user;
+      state.token = action.payload.token;
+      state.error = null;
+    });
+    builder.addCase(loginUser.rejected, (state, action) => {
+      state.loading = false;
+      state.error = action.payload as string;
+    });
+
     // ============== SIGNOUT THUNKS ==============
     builder.addCase(signoutUser.pending, (state) => {
       state.loading = true;

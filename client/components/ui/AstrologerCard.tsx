@@ -102,7 +102,7 @@ const AstrologerCard = ({ astrologer }: AstrologerCardProps) => {
     console.log('🔍 LocalStorage token:', localStorageToken ? `${localStorageToken.substring(0, 20)}...` : 'null');
     
     // Use localStorage token as fallback if cookie is empty
-    const token = cookieToken || localStorageToken;
+    const token = localStorageToken || cookieToken;
     
     if (!token) {
       alert('Please log in first to start a chat');
@@ -119,7 +119,7 @@ const AstrologerCard = ({ astrologer }: AstrologerCardProps) => {
       console.log('🚀 Astrologer ID:', astrologer._id);
       console.log('🚀 Form data:', formData);
       
-      const response = await fetch(`${getApiBaseUrl()}/api/v1/chat/init`, {
+      const response = await fetch(`${getApiBaseUrl()}/chat/init`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -135,6 +135,14 @@ const AstrologerCard = ({ astrologer }: AstrologerCardProps) => {
       console.log('📡 Response status:', response.status);
       console.log('📡 Response OK:', response.ok);
       console.log('📡 Response URL:', response.url);
+
+      if (response.status === 401 || response.status === 403) {
+        // Token invalid or expired – clear auth and redirect to login
+        localStorage.removeItem('token');
+        alert('Session expired. Please log in again.');
+        router.push(`/auth/login?redirectUrl=${encodeURIComponent(window.location.pathname)}`);
+        return;
+      }
 
       if (!response.ok) {
         const errorText = await response.text();

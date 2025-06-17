@@ -13,8 +13,13 @@ function initializeSocket(server) {
     "https://jyotishconnect.vercel.app",
     "https://4b681p4d-7000.inc1.devtunnels.ms",
     "https://jyotishconnect.onrender.com",
-    "https://jyotish-frontend-new.vercel.app"
-  ];
+    "https://jyotish-frontend-new.vercel.app",
+    // Add Azure App Service domains
+    "https://*.azurewebsites.net",
+    process.env.FRONTEND_URL,
+    // Allow any https Azure domain for production
+    /^https:\/\/.*\.azurewebsites\.net$/
+  ].filter(Boolean);
 
   const io = socketIO(server, {
     cors: {
@@ -22,7 +27,12 @@ function initializeSocket(server) {
       methods: ["GET", "POST"],
       allowedHeaders: ["Content-Type", "Authorization"],
       credentials: true
-    }
+    },
+    // Production optimizations for Azure
+    transports: ['websocket', 'polling'],
+    allowEIO3: true,
+    pingTimeout: 60000,
+    pingInterval: 25000
   });
 
   // Make io globally available for billing engine

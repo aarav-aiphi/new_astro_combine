@@ -332,6 +332,69 @@ export default function DebugLoginPage() {
                 💬 Test Chat Init with Astrologer (as User)
               </button>
             )}
+
+            {/* Test Network Connectivity */}
+            <button 
+              onClick={async () => {
+                console.log("🌐 Testing network connectivity...");
+                setDebugInfo((prev: any) => ({ ...prev, networkTest: "Testing..." }));
+                
+                try {
+                  // Test 1: Direct backend connection
+                  console.log("🌐 Test 1: Direct backend connection");
+                  const directTest = await fetch('http://localhost:7000/api/v1/users/profile', {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                  });
+                  console.log("🌐 Direct backend response:", directTest.status);
+                  
+                  // Test 2: Through Next.js rewrite
+                  console.log("🌐 Test 2: Through Next.js rewrite");
+                  const rewriteTest = await fetch('/api/v1/users/profile', {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                  });
+                  console.log("🌐 Rewrite response:", rewriteTest.status);
+                  
+                  // Test 3: With token if available
+                  const token = localStorage.getItem('token');
+                  if (token) {
+                    console.log("🌐 Test 3: With authentication token");
+                    const authTest = await fetch('/api/v1/users/profile', {
+                      method: 'GET',
+                      headers: { 
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json' 
+                      }
+                    });
+                    console.log("🌐 Auth test response:", authTest.status);
+                    const authData = await authTest.json();
+                    console.log("🌐 Auth test data:", authData);
+                  }
+                  
+                  setDebugInfo((prev: any) => ({ 
+                    ...prev, 
+                    networkTest: "✅ All tests completed - check console for details"
+                  }));
+                  
+                } catch (error: any) {
+                  console.error("🌐 Network test failed:", error);
+                  setDebugInfo((prev: any) => ({ 
+                    ...prev, 
+                    networkTest: `❌ Network test failed: ${error.message}`
+                  }));
+                }
+              }}
+              className="w-full bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+            >
+              🌐 Test Network Connectivity
+            </button>
+            
+            {debugInfo.networkTest && (
+              <div className="mt-2 p-2 bg-gray-100 rounded text-sm">
+                <strong>Network Test:</strong> {debugInfo.networkTest}
+              </div>
+            )}
           </div>
         </div>
       )}

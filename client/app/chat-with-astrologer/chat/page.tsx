@@ -18,6 +18,7 @@ import {
   markChatAsRead,
   selectUnreadCounts
 } from "@/redux/chatSlice";
+import { getSocketUrl } from "@/lib/utils";
 
 interface Participant {
   _id: string;
@@ -54,16 +55,39 @@ const ChatContent = () => {
   const [contextMenu, setContextMenu] = useState<{ chatId: string | null; position: { x: number; y: number } }>({ chatId: null, position: { x: 0, y: 0 } });
 
   useEffect(() => {
-    // const token = getCookie('token'); 
-    const newSocket = io('http://localhost:7000', {
+    const socketUrl = getSocketUrl();
+    console.log("Connecting to Socket.io at:", socketUrl);
+    
+    const newSocket = io(socketUrl, {
       auth: { token: store.getState().user.token },
-      transports: ['websocket']
+      transports: ['websocket', 'polling'],
+      upgrade: true,
+      rememberUpgrade: true,
+      timeout: 30000,
+      forceNew: true,
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: 5
     });
-    newSocket.on("connect", () => console.log("Connected to socket.io server"));
-    newSocket.on("connect_error", (err) => console.error("Connection error:", err.message));
+    
+    newSocket.on("connect", () => {
+      console.log("Successfully connected to Socket.io server");
+    });
+    
+    newSocket.on("connect_error", (err) => {
+      console.error("Socket connection error:", err.message);
+      console.error("Full error:", err);
+    });
+    
+    newSocket.on("disconnect", (reason) => {
+      console.log("Socket disconnected:", reason);
+    });
+    
     newSocket.on("userStatusUpdate", ({ userId, status }: OnlineUser) =>
       dispatch(setOnlineUser({ userId, status }))
     );
+    
     newSocket.on("onlineUsers", (users: OnlineUser[]) =>
       users.forEach(user => dispatch(setOnlineUser({ userId: user.userId, status: "online" })))
     );
@@ -81,32 +105,50 @@ const ChatContent = () => {
     const loadChatList = async () => {
       try {
         const token = localStorage.getItem('token');
-        
-        // Debug: Log current user info
-        console.log('👤 Current user making chat list request:', user);
 
-        const response = await fetch(`/api/v1/chat/list`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-        });
-        if (!response.ok) throw new Error("Failed to fetch chat list");
+        // Add retry logic for network issues
+        let response;
+        let lastError;
+        
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            response = await fetch(`/api/v1/chat/list`, {
+              method: 'GET',
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+              },
+              credentials: 'include',
+              cache: 'no-cache'
+            });
+            
+            break; // Success, exit retry loop
+            
+          } catch (fetchError: any) {
+            lastError = fetchError;
+            
+            // If it's a Chrome extension interference, try alternative approach
+            if (fetchError.message?.includes('Failed to fetch') && attempt < 3) {
+              await new Promise(resolve => setTimeout(resolve, attempt * 500));
+              continue;
+            }
+            
+            // If all attempts failed
+            if (attempt === 3) {
+              throw lastError;
+            }
+          }
+        }
+
+        if (!response) {
+          throw new Error('All fetch attempts failed');
+        }
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch chat list");
+        }
+        
         const data = await response.json();
-        
-        // Debug: Log the received chat data
-        console.log('📦 Received chat list data:', data);
-        data.forEach((chat, index) => {
-          console.log(`Chat ${index + 1}:`, {
-            _id: chat._id,
-            userId: chat.userId,
-            astrologerId: chat.astrologerId,
-            hasValidUserId: !!chat.userId?._id,
-            hasValidAstrologerId: !!chat.astrologerId?._id
-          });
-        });
-        
         setChatList(data);
 
         // Initialize Redux unread counts from server data
@@ -115,8 +157,13 @@ const ChatContent = () => {
           [chat._id]: chat.unreadCount
         }), {});
         dispatch(markChatAsRead(initialCounts));
-      } catch (error) {
+      } catch (error: any) {
         console.error("Error fetching chat list:", error);
+        
+        // Provide more helpful error messages
+        if (error.message?.includes('Failed to fetch')) {
+          console.error('Network connection failed. Please check your internet connection and try again.');
+        }
       }
     };
     loadChatList();
@@ -160,18 +207,56 @@ const ChatContent = () => {
 
   const handleMarkAsRead = async (chatId: string) => {
     try {
-      const token = localStorage.getItem('token'); 
+      const token = localStorage.getItem('token');
 
-      await fetch(`/api/v1/chat/${chatId}/read`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-      });
-      dispatch(markChatAsRead(chatId));
-    } catch (error) {
+      // Add retry logic for network issues
+      let response;
+      let lastError;
+      
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          response = await fetch(`/api/v1/chat/${chatId}/read`, {
+            method: 'PUT',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            credentials: 'include',
+            cache: 'no-cache'
+          });
+          
+          break; // Success, exit retry loop
+          
+        } catch (fetchError: any) {
+          lastError = fetchError;
+          
+          // If it's a Chrome extension interference, try alternative approach
+          if (fetchError.message?.includes('Failed to fetch') && attempt < 3) {
+            await new Promise(resolve => setTimeout(resolve, attempt * 500));
+            continue;
+          }
+          
+          // If all attempts failed
+          if (attempt === 3) {
+            throw lastError;
+          }
+        }
+      }
+
+      if (!response) {
+        throw new Error('All fetch attempts failed');
+      }
+
+      if (response.ok) {
+        dispatch(markChatAsRead(chatId));
+      }
+    } catch (error: any) {
       console.error('Error marking chat as read:', error);
+      
+      // Provide more helpful error messages
+      if (error.message?.includes('Failed to fetch')) {
+        console.error('Network connection failed. Please check your internet connection and try again.');
+      }
     }
   };
 

@@ -130,15 +130,15 @@ export default function BillingDisplay({ socket, className = '' }: BillingDispla
     };
   }, [socket, dispatch]);
 
-  // Don't render if no active session
-  if (!activeSession || !activeSession.isLive) {
+  // Don't render if no active session or if user is not a regular user (astrologers shouldn't see billing)
+  if (!activeSession || !activeSession.isLive || user?.role?.toLowerCase() !== 'user') {
     return null;
   }
 
   return (
     <div className={`${className}`}>
       {/* Low Balance Modal */}
-      <LowBalanceModal socket={socket} onRecharge={handleOpenRecharge} />
+      <LowBalanceModal socket={socket} />
 
       {/* End Session Confirmation Modal */}
       {showEndSessionModal && (

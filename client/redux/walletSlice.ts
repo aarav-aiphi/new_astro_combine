@@ -1,5 +1,4 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
-import axios from 'axios';
 
 // Types
 interface Transaction {
@@ -37,17 +36,59 @@ export const fetchWallet = createAsyncThunk(
         throw new Error('No authentication token found');
       }
 
-      const response = await axios.get('/api/v1/wallet/balance', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      // Add retry logic for network issues
+      let response;
+      let lastError;
+      
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          response = await fetch('/api/v1/wallet/balance', {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            credentials: 'include',
+            cache: 'no-cache'
+          });
+          
+          break; // Success, exit retry loop
+          
+        } catch (fetchError: any) {
+          lastError = fetchError;
+          
+          // If it's a Chrome extension interference, try alternative approach
+          if (fetchError.message?.includes('Failed to fetch') && attempt < 3) {
+            await new Promise(resolve => setTimeout(resolve, attempt * 500));
+            continue;
+          }
+          
+          // If all attempts failed
+          if (attempt === 3) {
+            throw lastError;
+          }
+        }
+      }
 
-      return response.data.data;
+      if (!response) {
+        throw new Error('All fetch attempts failed');
+      }
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to fetch wallet balance");
+      }
+
+      const data = await response.json();
+      return data.data;
     } catch (error: any) {
-      return rejectWithValue(
-        error.response?.data?.message || 'Failed to fetch wallet balance'
-      );
+      // Provide more helpful error messages
+      let errorMessage = error.message;
+      if (error.message?.includes('Failed to fetch')) {
+        errorMessage = 'Network connection failed. Please check your internet connection and try again.';
+      }
+      
+      return rejectWithValue(errorMessage);
     }
   }
 );
@@ -61,21 +102,60 @@ export const rechargeWallet = createAsyncThunk(
         throw new Error('No authentication token found');
       }
 
-      const response = await axios.post(
-        '/api/v1/wallet/recharge',
-        { amountPaise },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+      // Add retry logic for network issues
+      let response;
+      let lastError;
+      
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          response = await fetch('/api/v1/wallet/recharge', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            credentials: 'include',
+            cache: 'no-cache',
+            body: JSON.stringify({ amountPaise })
+          });
+          
+          break; // Success, exit retry loop
+          
+        } catch (fetchError: any) {
+          lastError = fetchError;
+          
+          // If it's a Chrome extension interference, try alternative approach
+          if (fetchError.message?.includes('Failed to fetch') && attempt < 3) {
+            await new Promise(resolve => setTimeout(resolve, attempt * 500));
+            continue;
+          }
+          
+          // If all attempts failed
+          if (attempt === 3) {
+            throw lastError;
+          }
         }
-      );
+      }
 
-      return response.data.data;
+      if (!response) {
+        throw new Error('All fetch attempts failed');
+      }
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to recharge wallet");
+      }
+
+      const data = await response.json();
+      return data.data;
     } catch (error: any) {
-      return rejectWithValue(
-        error.response?.data?.message || 'Failed to recharge wallet'
-      );
+      // Provide more helpful error messages
+      let errorMessage = error.message;
+      if (error.message?.includes('Failed to fetch')) {
+        errorMessage = 'Network connection failed. Please check your internet connection and try again.';
+      }
+      
+      return rejectWithValue(errorMessage);
     }
   }
 );
@@ -89,44 +169,59 @@ export const fetchTransactions = createAsyncThunk(
         throw new Error('No authentication token found');
       }
 
-      const response = await axios.get('/api/v1/wallet/transactions', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      return response.data.data.transactions;
-    } catch (error: any) {
-      return rejectWithValue(
-        error.response?.data?.message || 'Failed to fetch transactions'
-      );
-    }
-  }
-);
-
-export const fetchPaginatedTransactions = createAsyncThunk(
-  'wallet/fetchPaginatedTransactions',
-  async (page: number = 1, { rejectWithValue }) => {
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        throw new Error('No authentication token found');
+      // Add retry logic for network issues
+      let response;
+      let lastError;
+      
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          response = await fetch('/api/v1/wallet/transactions', {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            credentials: 'include',
+            cache: 'no-cache'
+          });
+          
+          break; // Success, exit retry loop
+          
+        } catch (fetchError: any) {
+          lastError = fetchError;
+          
+          // If it's a Chrome extension interference, try alternative approach
+          if (fetchError.message?.includes('Failed to fetch') && attempt < 3) {
+            await new Promise(resolve => setTimeout(resolve, attempt * 500));
+            continue;
+          }
+          
+          // If all attempts failed
+          if (attempt === 3) {
+            throw lastError;
+          }
+        }
       }
 
-      const response = await axios.get(`/api/v1/wallet/transactions?page=${page}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      if (!response) {
+        throw new Error('All fetch attempts failed');
+      }
 
-      return {
-        transactions: response.data.data.transactions,
-        pagination: response.data.data.pagination
-      };
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to fetch transactions");
+      }
+
+      const data = await response.json();
+      return data.data.transactions;
     } catch (error: any) {
-      return rejectWithValue(
-        error.response?.data?.message || 'Failed to fetch paginated transactions'
-      );
+      // Provide more helpful error messages
+      let errorMessage = error.message;
+      if (error.message?.includes('Failed to fetch')) {
+        errorMessage = 'Network connection failed. Please check your internet connection and try again.';
+      }
+      
+      return rejectWithValue(errorMessage);
     }
   }
 );
@@ -159,10 +254,12 @@ const walletSlice = createSlice({
       .addCase(fetchWallet.fulfilled, (state, action: PayloadAction<{ balancePaise: number }>) => {
         state.loading = false;
         state.balancePaise = action.payload.balancePaise;
+        state.error = null;
       })
       .addCase(fetchWallet.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
+        // Don't reset balance to 0 on network errors - keep existing value
       })
       
       // Recharge wallet
@@ -174,6 +271,7 @@ const walletSlice = createSlice({
         state.loading = false;
         state.balancePaise = action.payload.balancePaise;
         state.transactions.unshift(action.payload.transaction);
+        state.error = null;
       })
       .addCase(rechargeWallet.rejected, (state, action) => {
         state.loading = false;
@@ -188,10 +286,12 @@ const walletSlice = createSlice({
       .addCase(fetchTransactions.fulfilled, (state, action: PayloadAction<Transaction[]>) => {
         state.loading = false;
         state.transactions = action.payload;
+        state.error = null;
       })
       .addCase(fetchTransactions.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
+        // Keep existing transactions on error
       });
   },
 });

@@ -11,7 +11,8 @@ class BillingEngine extends EventEmitter {
     // Avoid MaxListeners warnings; we'll clean up manually
     this.setMaxListeners(0);
     this.activeSessions = new Map();
-    this.TICK_SECONDS = parseInt(process.env.TICK_SECONDS || '15');
+    this.processingTicks = new Set(); // Track sessions currently processing ticks
+    this.TICK_SECONDS = parseInt(process.env.TICK_SECONDS || '5');
     console.log(`BillingEngine initialized with ${this.TICK_SECONDS}s tick interval`);
   }
 
@@ -68,11 +69,16 @@ class BillingEngine extends EventEmitter {
   }
 
   /**
-   * Stop a billing session
+   * Stop a billing session with final settlement
    */
   async stopSession(sessionId, reason = 'user_ended') {
+    return await this.retryWithBackoff(async () => {
+    const mongoSession = await mongoose.startSession();
+    
     try {
       console.log(`Stopping billing session ${sessionId}, reason: ${reason}`);
+      
+      await mongoSession.startTransaction();
       
       // Clear the interval
       const intervalId = this.activeSessions.get(sessionId);
@@ -81,33 +87,179 @@ class BillingEngine extends EventEmitter {
         this.activeSessions.delete(sessionId);
       }
 
-      // Update session in database
-      const session = await BillingSession.findById(sessionId);
-      if (session && session.live) {
-        await session.endSession();
-        
-        // Emit session stopped event
-        this.emit('session:stopped', {
-          sessionId,
-          userId: session.userId.toString(),
-          astrologerId: session.astrologerId.toString(),
-          totalCostPaise: session.totalCostPaise,
-          secondsElapsed: session.secondsElapsed,
-          reason
-        });
-
-        console.log(`Billing session ${sessionId} stopped. Total cost: ${session.totalCostPaise} paise`);
+      // Get session from database
+      const sessionDoc = await BillingSession.findById(sessionId).session(mongoSession);
+      if (!sessionDoc || !sessionDoc.live) {
+        console.log(`Session ${sessionId} is not active, skipping final settlement`);
+        await mongoSession.abortTransaction();
+        return;
       }
+
+      // Calculate actual elapsed time since session started
+      const sessionStartTime = sessionDoc.startedAt || sessionDoc.createdAt;
+      const currentTime = new Date();
+      const actualSecondsElapsed = Math.floor((currentTime - sessionStartTime) / 1000);
+      
+      console.log(`📊 Final settlement for session ${sessionId}:`);
+      console.log(`  - Session started: ${sessionStartTime.toISOString()}`);
+      console.log(`  - Session ending: ${currentTime.toISOString()}`);
+      console.log(`  - Seconds already billed: ${sessionDoc.secondsElapsed}`);
+      console.log(`  - Actual seconds elapsed: ${actualSecondsElapsed}`);
+
+      // Calculate unbilled seconds (seconds that haven't been charged yet)
+      const unbilledSeconds = Math.max(0, actualSecondsElapsed - sessionDoc.secondsElapsed);
+      console.log(`  - Unbilled seconds: ${unbilledSeconds}`);
+
+      let finalSettlementPaise = 0;
+      let finalTotalCostPaise = sessionDoc.calculateCurrentCost();
+
+      // If there are unbilled seconds, charge for them
+      if (unbilledSeconds > 0) {
+        finalSettlementPaise = Math.ceil(
+          sessionDoc.ratePaisePerMin * unbilledSeconds / 60
+        );
+        
+        console.log(`  - Final settlement charge: ${finalSettlementPaise} paise for ${unbilledSeconds}s`);
+
+        // Cast the user id so the update predicate actually matches
+        const userOid = new mongoose.Types.ObjectId(sessionDoc.userId);
+        const Wallet = require('../models/wallet.model');
+        
+        // Try to charge for unbilled seconds
+        const wallet = await Wallet.findOneAndUpdate(
+          { 
+            userId: userOid, 
+            balancePaise: { $gte: finalSettlementPaise } 
+          },
+          { 
+            $inc: { balancePaise: -finalSettlementPaise },
+            $push: { 
+              history: {
+                type: 'debit',
+                amountPaise: finalSettlementPaise,
+                description: `Final billing settlement – ${unbilledSeconds}s`,
+                transactionId: require('uuid').v4(),
+                timestamp: new Date()
+              }
+            }
+          },
+          { new: true, session: mongoSession }
+        );
+
+        if (wallet) {
+          // Credit astrologer for final settlement
+          await Wallet.updateOne(
+            { userId: sessionDoc.astrologerId },
+            { 
+              $inc: { balancePaise: finalSettlementPaise },
+              $push: { 
+                history: {
+                  type: 'credit',
+                  amountPaise: finalSettlementPaise,
+                  description: `Final settlement earnings – ${unbilledSeconds}s`,
+                  transactionId: require('uuid').v4(),
+                  timestamp: new Date()
+                }
+              }
+            },
+            { session: mongoSession }
+          );
+
+          // Update session with actual elapsed time
+          sessionDoc.secondsElapsed = actualSecondsElapsed;
+          finalTotalCostPaise = sessionDoc.calculateCurrentCost();
+          
+          console.log(`✅ Final settlement successful: ${finalSettlementPaise} paise charged for ${unbilledSeconds}s`);
+        } else {
+          console.log(`⚠️  Insufficient balance for final settlement of ${finalSettlementPaise} paise`);
+          // Still end the session, but use the last known cost
+          finalTotalCostPaise = sessionDoc.calculateCurrentCost();
+        }
+      }
+
+      // End the session
+      sessionDoc.live = false;
+      sessionDoc.endedAt = currentTime;
+      sessionDoc.totalCostPaise = finalTotalCostPaise;
+      await sessionDoc.save({ session: mongoSession });
+
+      // Commit transaction
+      await mongoSession.commitTransaction();
+      
+      // Emit session stopped event
+      this.emit('session:stopped', {
+        sessionId,
+        userId: sessionDoc.userId.toString(),
+        astrologerId: sessionDoc.astrologerId.toString(),
+        totalCostPaise: finalTotalCostPaise,
+        secondsElapsed: actualSecondsElapsed,
+        finalSettlementPaise,
+        unbilledSeconds,
+        reason
+      });
+
+      console.log(`✅ Billing session ${sessionId} stopped successfully:`);
+      console.log(`  - Total seconds: ${actualSecondsElapsed}`);
+      console.log(`  - Total cost: ${finalTotalCostPaise} paise`);
+      console.log(`  - Final settlement: ${finalSettlementPaise} paise`);
+      
     } catch (error) {
       console.error('Error stopping billing session:', error);
-      throw error;
+      await mongoSession.abortTransaction();
+        throw error; // Re-throw for retry logic
+    } finally {
+      await mongoSession.endSession();
+      }
+    });
+  }
+
+  /**
+   * Retry logic for MongoDB write conflicts
+   */
+  async retryWithBackoff(operation, maxRetries = 3) {
+    let retryCount = 0;
+    
+    while (retryCount < maxRetries) {
+      try {
+        return await operation();
+      } catch (error) {
+        // Check if it's a write conflict (TransientTransactionError)
+        if (error.code === 112 || error.errorLabels?.includes('TransientTransactionError')) {
+          retryCount++;
+          
+          if (retryCount >= maxRetries) {
+            console.error(`Max retries (${maxRetries}) exceeded for write conflict`);
+            throw error;
+          }
+          
+          // Exponential backoff: 100ms, 200ms, 400ms
+          const backoffMs = 100 * Math.pow(2, retryCount - 1);
+          console.log(`Write conflict detected, retrying in ${backoffMs}ms (attempt ${retryCount}/${maxRetries})`);
+          
+          await new Promise(resolve => setTimeout(resolve, backoffMs));
+          continue;
+        }
+        
+        // If it's not a write conflict, throw immediately
+        throw error;
+      }
     }
   }
 
   /**
-   * Process billing tick with atomic transaction
+   * Process billing tick with atomic transaction and retry logic
    */
   async processTick(sessionId, socket) {
+    // Prevent concurrent ticks for the same session
+    if (this.processingTicks.has(sessionId)) {
+      console.log(`Tick already in progress for session ${sessionId}, skipping`);
+      return;
+    }
+
+    this.processingTicks.add(sessionId);
+    
+    try {
+      return await this.retryWithBackoff(async () => {
     const mongoSession = await mongoose.startSession();
     
     try {
@@ -244,8 +396,14 @@ class BillingEngine extends EventEmitter {
       console.error(`Error processing tick for session ${sessionId}:`, error);
       await mongoSession.abortTransaction();
       await this.stopSession(sessionId, 'processing_error');
+        throw error; // Re-throw for retry logic
+        } finally {
+          await mongoSession.endSession();
+        }
+      });
     } finally {
-      await mongoSession.endSession();
+      // Always remove from processing set
+      this.processingTicks.delete(sessionId);
     }
   }
 

@@ -112,12 +112,17 @@ export function Header() {
             {/* Left side - Logo and main nav */}
             <div className="flex items-center space-x-8">
               <Link href="/" className="flex items-center space-x-2">
-                <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center hover:bg-teal-700 transition-colors duration-200">
-                  <span className="text-white font-bold text-xl">JC</span>
+                <div className="w-12 h-12 bg-gradient-to-r from-amber-500 via-orange-500 to-red-600 rounded-full flex items-center justify-center hover:shadow-lg hover:shadow-orange-200 transition-all duration-300">
+                  <span className="text-white font-bold text-xl">AA</span>
                 </div>
-                <span className="text-xl font-bold text-gray-800 hover:text-black transition-colors duration-200">
-                  JyotishConnect
-                </span>
+                <div className="flex flex-col">
+                  <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-amber-600 via-orange-500 to-red-600 hover:from-amber-700 hover:via-orange-600 hover:to-red-700 transition-all duration-200">
+                    AstroAlert
+                  </span>
+                  <span className="text-xs text-amber-600/70 font-medium -mt-1">
+                    by aiphi
+                  </span>
+                </div>
               </Link>
               <div className="hidden sm:flex space-x-8">
                 {navLinks.map((nav) => (

@@ -22,7 +22,7 @@ if (!mongoose.connection.readyState) {
     .then(async () => {
       console.log("db connected successfully");
       
-      // Initialize billing engine with existing active sessions
+      // Initialize billing engine (without auto-restoring sessions)
       await initializeBillingEngine();
     })
     .catch((err) => {
@@ -33,7 +33,30 @@ if (!mongoose.connection.readyState) {
     });
 }
 
-app.use(cors({ origin: true, credentials: true }));
+// ============== CORS Configuration =============
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:5173", 
+  "https://your-app-name.azurewebsites.net", // Replace with your actual Azure App Service domain
+  process.env.FRONTEND_URL // Allow setting via environment variable
+].filter(Boolean);
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  credentials: true,
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"]
+};
+
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions)); // Handle preflight requests
 app.use(express.json({ limit: '50mb' }));
 app.use(cookieParser());
 app.use(errorHandler);
@@ -54,45 +77,32 @@ async function initializeBillingEngine() {
     const activeSessions = await BillingSession.find({ live: true });
     
     if (activeSessions.length === 0) {
-      console.log('✅ No active billing sessions to restore');
+      console.log('✅ No active billing sessions found - billing engine ready');
       return;
     }
 
-    console.log(`📊 Found ${activeSessions.length} active billing sessions to restore`);
+    console.log(`⚠️  Found ${activeSessions.length} orphaned billing session(s) from previous server run`);
+    console.log('🔄 Auto-ending orphaned sessions to prevent unwanted charges...');
     
-    // Clear any existing intervals
-    billingEngine.activeSessions.clear();
-    
-    // Create a generic socket emitter for server-side billing
-    const serverSocket = {
-      emit: (event, data) => {
-        // Emit to all connected sockets via global io instance if available
-        if (global.io) {
-          global.io.emit(event, data);
-        }
-      }
-    };
-
-    // Restart intervals for each active session
+    // Auto-end any orphaned sessions (sessions that were active when server was last shut down)
+    // These sessions should not continue billing when server restarts
     for (const session of activeSessions) {
       try {
-        const intervalId = setInterval(async () => {
-          try {
-            await billingEngine.processTick(session._id.toString(), serverSocket);
-          } catch (error) {
-            console.error(`💳 Error in billing tick for session ${session._id}:`, error.message);
-          }
-        }, billingEngine.TICK_SECONDS * 1000);
-
-        billingEngine.activeSessions.set(session._id.toString(), intervalId);
-        console.log(`✅ Restored billing for session ${session._id} (${session.sessionType})`);
+        const finalCost = session.calculateCurrentCost();
+        session.live = false;
+        session.endedAt = new Date();
+        session.totalCostPaise = finalCost;
+        await session.save();
+        
+        console.log(`⏹️  Ended orphaned session ${session._id} (${session.sessionType}) - Final cost: ${finalCost} paise`);
       } catch (error) {
-        console.error(`❌ Failed to restore billing for session ${session._id}:`, error.message);
+        console.error(`❌ Failed to end orphaned session ${session._id}:`, error.message);
       }
     }
 
-    console.log(`🎉 BillingEngine initialized with ${billingEngine.activeSessions.size} active sessions`);
+    console.log(`✅ BillingEngine initialized - ${activeSessions.length} orphaned session(s) ended`);
     console.log(`⏱️  Tick interval: ${billingEngine.TICK_SECONDS} seconds`);
+    console.log('💡 Sessions will only be created when users actively join chats');
     
   } catch (error) {
     console.error('❌ Failed to initialize billing engine:', error);

@@ -5,7 +5,6 @@ import { Button } from "../ui/button";
 import { Loader2, Wallet } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAppSelector } from "@/redux/hooks";
-import api from '@/lib/api';
 
 export default function MiniWalletBalance({ 
   refreshInterval = 30000, // refresh every 30 seconds by default
@@ -32,13 +31,62 @@ export default function MiniWalletBalance({
   const fetchWalletBalance = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/wallet/balance');
       
-      if (response.data.success) {
-        setBalance(response.data.data.balance);
+      // Add retry logic for network issues
+      let response;
+      let lastError;
+      
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          response = await fetch('/api/v1/wallet/balance', {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            credentials: 'include',
+            cache: 'no-cache'
+          });
+          
+          break; // Success, exit retry loop
+          
+        } catch (fetchError) {
+          lastError = fetchError;
+          
+          // If it's a Chrome extension interference, try alternative approach
+          if (fetchError.message?.includes('Failed to fetch') && attempt < 3) {
+            await new Promise(resolve => setTimeout(resolve, attempt * 500));
+            continue;
+          }
+          
+          // If all attempts failed
+          if (attempt === 3) {
+            throw lastError;
+          }
+        }
+      }
+
+      if (!response) {
+        throw new Error('All fetch attempts failed');
+      }
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to fetch wallet balance");
+      }
+
+      const data = await response.json();
+      
+      if (data.success) {
+        setBalance(data.data.balancePaise / 100); // Convert paise to rupees
       }
     } catch (error) {
       console.error('Error fetching wallet balance:', error);
+      
+      // Provide more helpful error messages
+      if (error.message?.includes('Failed to fetch')) {
+        console.error('Network connection failed. Please check your internet connection and try again.');
+      }
     } finally {
       setLoading(false);
     }

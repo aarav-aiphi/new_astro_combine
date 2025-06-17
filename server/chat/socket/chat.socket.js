@@ -63,6 +63,7 @@ module.exports = function setupChatHandlers(io, socket, onlineUsers) {
             // Emit consultation started event (matches new billing system)
             io.to(chatId).emit('consult:started', {
               sessionId,
+              userId: chat.userId.toString(),
               astrologerId: chat.astrologerId.toString(),
               sessionType: 'chat',
               ratePaisePerMin,
@@ -75,12 +76,19 @@ module.exports = function setupChatHandlers(io, socket, onlineUsers) {
             // If there's an existing session, inform the clients
             // Add null checks for activeSession fields
             if (activeSession._id && activeSession.astrologerId && activeSession.ratePaisePerMin) {
-              io.to(chatId).emit('consult:started', {
+              // Get astrologer name for the existing session
+              let astrologer = await Astrologer.findById(activeSession.astrologerId);
+              if (!astrologer) {
+                astrologer = await Astrologer.findOne({ userId: activeSession.astrologerId });
+              }
+              
+              io.to(chatId).emit('session:already-active', {
                 sessionId: activeSession._id.toString(),
+                userId: chat.userId.toString(),
                 astrologerId: activeSession.astrologerId.toString(),
                 sessionType: 'chat',
                 ratePaisePerMin: activeSession.ratePaisePerMin,
-                astrologerName: 'Active Session',
+                astrologerName: astrologer ? astrologer.name : 'Active Session',
                 tickInterval: parseInt(process.env.TICK_SECONDS || '15')
               });
               console.log(`♻️  Existing billing session found for user ${chat.userId}`);
@@ -120,6 +128,7 @@ module.exports = function setupChatHandlers(io, socket, onlineUsers) {
 
               io.to(chatId).emit('consult:started', {
                 sessionId,
+                userId: chat.userId.toString(),
                 astrologerId: chat.astrologerId.toString(),
                 sessionType: 'chat',
                 ratePaisePerMin,
@@ -140,6 +149,91 @@ module.exports = function setupChatHandlers(io, socket, onlineUsers) {
       }
     } catch (error) {
       console.error('Error in joinRoom:', error);
+    }
+  });
+
+  // Handle consultation end requests
+  socket.on('consult:end', async ({ sessionId, reason = 'user_ended' }) => {
+    try {
+      console.log(`🔚 Consult end requested - SessionId: ${sessionId}, Reason: ${reason}, User: ${socket.user.id}`);
+      
+      // Validate sessionId
+      if (!sessionId) {
+        console.error('❌ No sessionId provided in consult:end request');
+        socket.emit('errorMessage', {
+          message: 'Session ID is required to end consultation'
+        });
+        return;
+      }
+      
+      const { billingEngine } = require('../../services/BillingEngine.js');
+      
+      // Verify the session exists and belongs to the user
+      const activeSession = await billingEngine.getActiveSession(socket.user.id);
+      
+      if (!activeSession) {
+        console.log('❌ No active session found for user:', socket.user.id);
+        socket.emit('errorMessage', {
+          message: 'No active session found'
+        });
+        return;
+      }
+      
+      if (activeSession._id.toString() !== sessionId) {
+        console.log('❌ Session ID mismatch:', { 
+          provided: sessionId, 
+          actual: activeSession._id.toString() 
+        });
+        socket.emit('errorMessage', {
+          message: 'Session not found or not authorized to end this session'
+        });
+        return;
+      }
+
+      // End the billing session
+      const resultPromise = new Promise((resolve) => {
+        // Listen for the session:stopped event once
+        billingEngine.once('session:stopped', (data) => {
+          resolve(data);
+        });
+      });
+      
+      // Stop the session (this will trigger session:stopped event)
+      await billingEngine.stopSession(sessionId, reason);
+      
+      // Wait for the session:stopped event data
+      const sessionResult = await resultPromise;
+      
+      // Find the chat room to emit to
+      const chatId = Object.keys(socket.rooms).find(room => room !== socket.id);
+      
+      if (chatId) {
+        // Emit consultation ended event to all clients in the room with final settlement data
+        io.to(chatId).emit('consult:ended', {
+          sessionId: sessionId,
+          reason: reason,
+          timestamp: new Date(),
+          totalCostPaise: sessionResult.totalCostPaise,
+          finalSettlementPaise: sessionResult.finalSettlementPaise,
+          unbilledSeconds: sessionResult.unbilledSeconds,
+          actualSecondsElapsed: sessionResult.secondsElapsed
+        });
+        
+        console.log(`✅ Consultation ${sessionId} ended by user ${socket.user.id}:`);
+        console.log(`  - Reason: ${reason}`);
+        console.log(`  - Total cost: ${sessionResult.totalCostPaise} paise`);
+        console.log(`  - Final settlement: ${sessionResult.finalSettlementPaise} paise for ${sessionResult.unbilledSeconds}s`);
+        console.log(`  - Total duration: ${sessionResult.secondsElapsed}s`);
+      } else {
+        console.warn('⚠️ No chat room found for ending consultation');
+      }
+
+    } catch (error) {
+      console.error('Error ending consultation:', error);
+      socket.emit('errorMessage', {
+        message: 'Failed to end consultation',
+        error: error.message
+      });
     }
   });
 

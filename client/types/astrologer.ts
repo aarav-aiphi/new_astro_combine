@@ -15,15 +15,18 @@ export interface User {
   }
   
   export interface AstrologerData {
-    _id: string;
-    user: User;
-    specializations: Specialization[];
-    languages: string[];
-    experience: number;
-    costPerMinute: number;
-    ratePaisePerMin?: number;
-    ratePaisePerMinChat?: number;
-    ratePaisePerMinCall?: number;
-    averageRating?: Ratings;
-  }
+  _id: string;
+  user: User;
+  specializations: Specialization[];
+  languages: string[];
+  experience: number;
+  costPerMinute: number;
+  ratePaisePerMin?: number;
+  ratePaisePerMinChat?: number;
+  ratePaisePerMinCall?: number;
+  averageRating?: Ratings;
+  chatStatus?: 'online' | 'offline';
+  callStatus?: 'online' | 'offline';
+  totalConsultations?: number;
+}
   

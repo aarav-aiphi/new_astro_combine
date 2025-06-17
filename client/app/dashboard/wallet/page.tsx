@@ -18,7 +18,6 @@ import {
   TableHeader, 
   TableRow 
 } from "@/components/ui/table";
-import axios from 'axios';
 
 interface PaginatedTransaction {
   _id: string;
@@ -68,14 +67,61 @@ export default function WalletPage() {
     setLoadingTransactions(true);
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get(`/api/v1/wallet/transactions?page=${page}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
       
-      setPaginatedTransactions(response.data.data.transactions);
-      setPagination(response.data.data.pagination);
-    } catch (error) {
+      // Add retry logic for network issues
+      let response;
+      let lastError;
+      
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          response = await fetch(`/api/v1/wallet/transactions?page=${page}`, {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            credentials: 'include',
+            cache: 'no-cache'
+          });
+          
+          break; // Success, exit retry loop
+          
+        } catch (fetchError: any) {
+          lastError = fetchError;
+          
+          // If it's a Chrome extension interference, try alternative approach
+          if (fetchError.message?.includes('Failed to fetch') && attempt < 3) {
+            await new Promise(resolve => setTimeout(resolve, attempt * 500));
+            continue;
+          }
+          
+          // If all attempts failed
+          if (attempt === 3) {
+            throw lastError;
+          }
+        }
+      }
+
+      if (!response) {
+        throw new Error('All fetch attempts failed');
+      }
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to fetch paginated transactions");
+      }
+
+      const data = await response.json();
+      
+      setPaginatedTransactions(data.data.transactions);
+      setPagination(data.data.pagination);
+    } catch (error: any) {
       console.error('Failed to fetch transactions:', error);
+      
+      // Provide more helpful error messages
+      if (error.message?.includes('Failed to fetch')) {
+        console.error('Network connection failed. Please check your internet connection and try again.');
+      }
     } finally {
       setLoadingTransactions(false);
     }

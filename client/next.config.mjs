@@ -5,7 +5,9 @@ const nextConfig = {
     // your project has ESLint errors.
     ignoreDuringBuilds: true,
   },
+  output: 'standalone',
   images: {
+    unoptimized: true, // Disable image optimization for static export
     remotePatterns: [
       { protocol: 'https', hostname: 'cdn-icons-png.flaticon.com' },
       { protocol: 'https', hostname: 'img.freepik.com' },
@@ -18,11 +20,19 @@ const nextConfig = {
       { protocol: 'https', hostname: 'i.ibb.co' }
     ],
   },
+  env: {
+    API_URL: process.env.API_URL || '/api/v1',
+    SOCKET_URL: process.env.SOCKET_URL || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:7000'),
+  },
   async rewrites() {
     return [
       {
         source: '/api/v1/:path*',
-        destination: 'http://localhost:7000/api/v1/:path*',
+        destination: 'http://127.0.0.1:7000/api/v1/:path*',
+      },
+      {
+        source: '/socket.io/:path*',
+        destination: 'http://127.0.0.1:7000/socket.io/:path*',
       },
     ];
   },  

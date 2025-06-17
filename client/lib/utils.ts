@@ -13,12 +13,21 @@ export function getCookie(name: string): string | null {
 }
 
 export function getApiBaseUrl(): string {
-  // In development, call backend directly
+  // Always use relative URLs - Next.js rewrites will handle routing to backend
+  return '/api/v1';
+}
+
+export function getSocketUrl(): string {
+  // For Socket.io in development, connect directly to backend
+  // In production, use the same origin - Next.js rewrites will handle routing
   if (process.env.NODE_ENV === 'development') {
     return 'http://localhost:7000';
   }
-  // In production, use relative URLs (will work with proxy/rewrite)
-  return '';
+  
+  // If you have a separate backend server in production, uncomment and update:
+  // return process.env.NEXT_PUBLIC_BACKEND_URL || window.location.origin;
+  
+  return window.location.origin;
 }
 
 export function compareArrays<T>(arr1: T[], arr2: T[]): boolean {
