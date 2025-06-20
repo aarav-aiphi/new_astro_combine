@@ -175,7 +175,7 @@ export default function ChatUI({ socket, selectedChatId, user }: ChatUIProps) {
         // When running in Jest we mock network; bail early
         if (typeof fetch !== "function") return;
         
-        const token = localStorage.getItem('token');
+        const token = localStorage.getItem('token'); 
         
         // Add retry logic for network issues
         let response;
@@ -184,10 +184,10 @@ export default function ChatUI({ socket, selectedChatId, user }: ChatUIProps) {
         for (let attempt = 1; attempt <= 3; attempt++) {
           try {
             response = await fetch(`/api/v1/chat/${selectedChatId}`, {
-              credentials: "include",
-              headers: {
-                'Authorization': `Bearer ${token}`,
-                'Accept': 'application/json'
+            credentials: "include",
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Accept': 'application/json'
               },
               cache: 'no-cache'
             });
@@ -207,8 +207,8 @@ export default function ChatUI({ socket, selectedChatId, user }: ChatUIProps) {
             if (attempt === 3) {
               throw lastError;
             }
+            }
           }
-        }
 
         if (!response) {
           throw new Error('All fetch attempts failed');

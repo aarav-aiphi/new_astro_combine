@@ -7,23 +7,44 @@ const setupChatHandlers = require('./chat.socket');
 const setupBillingHandlers = require('./billing.socket');
 
 function initializeSocket(server) {
+  const frontendUrl = process.env.FRONTEND_URL; // e.g., https://astroalert.co
   const allowedOrigins = [
     'http://localhost:3000',
-    "https://4b681p4d-3000.inc1.devtunnels.ms",
+    // Dev/Staging URLs
     "https://jyotishconnect.vercel.app",
-    "https://4b681p4d-7000.inc1.devtunnels.ms",
-    "https://jyotishconnect.onrender.com",
     "https://jyotish-frontend-new.vercel.app",
-    // Add Azure App Service domains
-    "https://*.azurewebsites.net",
-    process.env.FRONTEND_URL,
-    // Allow any https Azure domain for production
-    /^https:\/\/.*\.azurewebsites\.net$/
-  ].filter(Boolean);
+    "https://jyotishconnect.onrender.com",
+    "https://4b681p4d-3000.inc1.devtunnels.ms",
+    "https://4b681p4d-7000.inc1.devtunnels.ms",
+    // Azure wildcard for review environments
+    /^https:\/\/.*\.azurewebsites\.net$/,
+  ];
+
+  // Dynamically add production frontend URLs
+  if (frontendUrl) {
+    allowedOrigins.push(frontendUrl); // e.g. https://astroalert.co
+    try {
+      const url = new URL(frontendUrl);
+      if (url.hostname.split('.').length === 2) { // Simple check for a root domain like 'astroalert.co'
+         allowedOrigins.push(`${url.protocol}//www.${url.hostname}`); // e.g. https://www.astroalert.co
+      }
+    } catch (error) {
+        console.error("Invalid FRONTEND_URL for CORS:", error);
+    }
+  }
 
   const io = socketIO(server, {
     cors: {
-      origin: allowedOrigins,
+      origin: (origin, callback) => {
+        // allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.some(allowedOrigin => 
+            typeof allowedOrigin === 'string' ? allowedOrigin === origin : allowedOrigin.test(origin)
+        )) {
+          return callback(null, true);
+        }
+        return callback(new Error('Not allowed by CORS'));
+      },
       methods: ["GET", "POST"],
       allowedHeaders: ["Content-Type", "Authorization"],
       credentials: true

@@ -1,4 +1,4 @@
-import { Header } from '@/components/header'
+
 import { ServicesSection } from '@/components/sections/services'
 import { TestimonialsSection } from '@/components/sections/testimonials'
 import { AstrologersSection } from '@/components/sections/astrologers'
@@ -11,7 +11,6 @@ import { CustomerReviews } from "@/components2/CustomerReviews"
 export default function Home() {
   return (
     <div className="min-h-screen">
-      <Header />
       <main>
         {/* <HeroSection /> */}
         <Hero />

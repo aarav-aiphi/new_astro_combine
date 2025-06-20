@@ -6,6 +6,7 @@ import GlobalConnectingPopup from '@/components/GlobalConnectingPopup';
 import AuthLoader from '@/components/AuthLoader';  // Import the AuthLoader
 import GlobalRechargeModal from '@/components/ui/GlobalRechargeModal';
 import { Toaster } from "@/components/ui/toaster"
+import { ConditionalHeader } from '@/components/ConditionalHeader'
 
 const roboto = Roboto({ 
   subsets: ['latin'],
@@ -30,6 +31,7 @@ export default function RootLayout({
           <AuthLoader>
             <GlobalConnectingPopup />
             <GlobalRechargeModal />
+            <ConditionalHeader />
             {children}
             <Toaster />
           </AuthLoader>

@@ -10,6 +10,7 @@ import { MdLogout } from "react-icons/md";
 import { useAppDispatch, useAppSelector } from "@/redux/hooks";
 import { signoutUser } from "@/redux/userSlice";
 import BalanceChip from "@/components/ui/BalanceChip";
+import ProfileDropdown from "@/components/ProfileDropdown";
 
 const navLinks = [
   {
@@ -103,10 +104,7 @@ export function Header() {
   return (
     <div className="relative z-50 mb-20">
       <nav className={`fixed top-0 w-full transition-all duration-300 ease-in-out ${scrolled ? 'bg-white/50 backdrop-blur-md shadow-sm' : 'bg-white shadow-md'} ${!scrolled ? 'transform translate-y-[-100%]' : ''}`}>
-        {/* Balance Chip - Top Right */}
-        {isAuthenticated && (
-          <BalanceChip onClick={handleWalletClick} />
-        )}
+
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-20">
             {/* Left side - Logo and main nav */}
@@ -153,34 +151,7 @@ export function Header() {
 
               {isAuthenticated && user ? (
                 <div className="flex items-center space-x-3">
-                  {/* Wallet Balance Badge - Clickable with red blinking for low balance */}
-                  <button
-                    onClick={handleWalletClick}
-                    data-testid="wallet-badge"
-                    className={`relative px-3 py-1 rounded-full text-sm font-medium border transition-all duration-200 ${
-                      isLowBalance 
-                        ? 'animate-pulse bg-red-500 text-white border-red-600 hover:bg-red-600' 
-                        : 'bg-green-100 text-green-800 border-green-200 hover:bg-green-200'
-                    }`}
-                  >
-                    ₹{formatBalance(walletBalance)}
-                  </button>
-                  
-                  <div className="w-8 h-8 rounded-full overflow-hidden">
-                    <Image
-                      src={user.avatar}
-                      alt="User Avatar"
-                      width={1000}
-                      height={1000}
-                      className="w-full h-full object-cover rounded-full"
-                    />
-                  </div>
-                  <button
-                    onClick={handleLogout}
-                    className="p-2 rounded-full hover:bg-gray-100 transition-colors duration-200"
-                  >
-                    <MdLogout className="w-5 h-5 text-gray-600" />
-                  </button>
+                  <ProfileDropdown />
                 </div>
               ) : (
                 <Link href="/auth/login">
@@ -201,8 +172,9 @@ export function Header() {
                 {navLinks.map((nav) => (
                   <Link
                     key={nav.id}
-                    href={`/${nav.id === 'chat-with-astrologer' ? 'chat' : nav.id}`}
+                    href={`/${nav.id}`}
                     className="text-gray-600 hover:text-black transition-colors duration-200"
+                    onClick={() => setToggle(false)}
                   >
                     {nav.title}
                   </Link>

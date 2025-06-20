@@ -135,13 +135,13 @@ export const fetchCurrentUser = createAsyncThunk(
         try {
           response = await fetch('/api/v1/users/profile', {
             method: 'GET',
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            },
-            credentials: 'include',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
             cache: 'no-cache'
-          });
+      });
           
           break; // Success, exit retry loop
           

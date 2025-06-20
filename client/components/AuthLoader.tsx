@@ -36,7 +36,7 @@ const AuthLoader: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
         // Fetch current user first
         try {
-          await dispatch(fetchCurrentUser()).unwrap();
+        await dispatch(fetchCurrentUser()).unwrap();
         } catch (userFetchError: any) {
           // If it's a network error, still allow the app to load
           if (userFetchError?.includes('Network connection failed') || 

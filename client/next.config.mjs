@@ -22,13 +22,19 @@ const nextConfig = {
   },
   env: {
     API_URL: process.env.API_URL || '/api/v1',
-    SOCKET_URL: process.env.SOCKET_URL || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:7000'),
+    SOCKET_URL: process.env.NODE_ENV === 'development' 
+      ? 'http://localhost:7000' 
+      : undefined,
   },
   async rewrites() {
     return [
       {
         source: '/api/v1/:path*',
         destination: 'http://127.0.0.1:7000/api/v1/:path*',
+      },
+      {
+        source: '/socket.io/',
+        destination: 'http://127.0.0.1:7000/socket.io/',
       },
       {
         source: '/socket.io/:path*',

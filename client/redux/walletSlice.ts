@@ -44,8 +44,8 @@ export const fetchWallet = createAsyncThunk(
         try {
           response = await fetch('/api/v1/wallet/balance', {
             method: 'GET',
-            headers: {
-              Authorization: `Bearer ${token}`,
+        headers: {
+          Authorization: `Bearer ${token}`,
               'Content-Type': 'application/json'
             },
             credentials: 'include',
@@ -110,8 +110,8 @@ export const rechargeWallet = createAsyncThunk(
         try {
           response = await fetch('/api/v1/wallet/recharge', {
             method: 'POST',
-            headers: {
-              Authorization: `Bearer ${token}`,
+          headers: {
+            Authorization: `Bearer ${token}`,
               'Content-Type': 'application/json'
             },
             credentials: 'include',
@@ -177,8 +177,8 @@ export const fetchTransactions = createAsyncThunk(
         try {
           response = await fetch('/api/v1/wallet/transactions', {
             method: 'GET',
-            headers: {
-              Authorization: `Bearer ${token}`,
+        headers: {
+          Authorization: `Bearer ${token}`,
               'Content-Type': 'application/json'
             },
             credentials: 'include',

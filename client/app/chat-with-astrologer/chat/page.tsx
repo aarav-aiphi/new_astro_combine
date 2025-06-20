@@ -55,24 +55,31 @@ const ChatContent = () => {
   const [contextMenu, setContextMenu] = useState<{ chatId: string | null; position: { x: number; y: number } }>({ chatId: null, position: { x: 0, y: 0 } });
 
   useEffect(() => {
-    const socketUrl = getSocketUrl();
-    console.log("Connecting to Socket.io at:", socketUrl);
-    
-    const newSocket = io(socketUrl, {
+    const isProduction = process.env.NODE_ENV === 'production';
+
+    const socketOptions = {
+      path: '/socket.io', // Crucial for the Next.js rewrite
       auth: { token: store.getState().user.token },
-      transports: ['websocket', 'polling'],
-      upgrade: true,
-      rememberUpgrade: true,
+      // Use only polling in production for Azure sidecar compatibility
+      transports: isProduction ? ['polling'] : ['websocket', 'polling'],
+      upgrade: false, // Disable upgrade to websocket in production
+      rememberUpgrade: false, // Don't remember websocket upgrade in production
       timeout: 30000,
       forceNew: true,
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       reconnectionAttempts: 5
-    });
+    };
+
+    // In production, connect to the frontend host and let the rewrite handle it.
+    // The `io()` function defaults to the current host when no URL is provided.
+    const newSocket = isProduction
+      ? io(socketOptions)
+      : io(process.env.SOCKET_URL || 'http://localhost:7000', socketOptions);
     
     newSocket.on("connect", () => {
-      console.log("Successfully connected to Socket.io server");
+      console.log("Successfully connected to Socket.io server via", isProduction ? "HTTP polling through Next.js rewrite" : "direct WebSocket connection");
     });
     
     newSocket.on("connect_error", (err) => {

@@ -80,7 +80,7 @@ export function ServicesSection() {
           </div>
           <h2 className="text-4xl md:text-5xl font-bold mb-6 bg-clip-text text-transparent bg-gradient-to-r from-amber-600 via-orange-500 to-red-600">
             Spiritual Intelligence Services
-          </h2>
+        </h2>
                      <p className="text-xl text-amber-700/80 max-w-3xl mx-auto leading-relaxed">
              AstroAlert combines ancient Vedic wisdom with cutting-edge AI technology to provide you with the most accurate and personalized spiritual guidance.
            </p>
@@ -117,7 +117,7 @@ export function ServicesSection() {
 
         {/* Services Grid */}
         <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4">
-          {services.map((service, index) => (
+        {services.map((service, index) => (
             <motion.div 
               key={index}
               initial={{ opacity: 0, y: 30 }}
